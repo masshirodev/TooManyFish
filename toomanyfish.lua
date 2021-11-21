@@ -13,9 +13,9 @@ self.Info = {
     Author      = "Mash#3428",
     AddonName   = "TooManyFish",
     ClassName   = "TooManyFish",
-	Version     = 103,
+	Version     = 104,
 	StartDate   = "18-05-2021",
-	LastUpdate  = "18-05-2021",
+	LastUpdate  = "21-05-2021",
     Description = "Deletes seafood when inventory is full.",
 	ChangeLog = {
         [1] = "0.0.1 - Starting development.",
@@ -23,6 +23,7 @@ self.Info = {
         [101] = "1.0.1 - Bugfix, blacklist area.",
         [102] = "1.0.2 - Adding the option to blacklist aquarium fish.",
         [103] = "1.0.3 - Discarding untradable items is now supported.",
+        [104] = "1.0.4 - Auto discard fishes after ocean fishing expeditions.",
 	}
 }
 
@@ -38,19 +39,27 @@ self.IRTPath            = self.ModulePath           .. [[irt.lua]]
 -- ------------------------- Settings ------------------------
 
 self.DefaultSettings = {
-    EnableTooManyFish   = false,
-    BlacklistAquarium   = false,
-    AddonVersion        = self.Info.Version,
-    FishBlacklist       = [[30487]]
+    EnableTooManyFish           = false,
+    AutoDiscardAfterExpedition  = true,
+    BlacklistAquarium           = false,
+    AddonVersion                = self.Info.Version,
+    FishBlacklist               = [[30487]]
 }
 
 if FileExists(self.SettingsPath) then
     local CheckBeforeDelete = FileLoad(self.SettingsPath)
 
     -- Add new BlacklistAquarium settings for settings versions < 1.0.2
-    if not CheckBeforeDelete.AddonVersion or CheckBeforeDelete.AddonVersion < 102 then
+    if not CheckBeforeDelete.AddonVersion and CheckBeforeDelete.AddonVersion < 102 then
         CheckBeforeDelete.AddonVersion      = 102
         CheckBeforeDelete.BlacklistAquarium = false
+        FileSave(self.SettingsPath, self.DefaultSettings)
+    end
+
+    -- Add new AutoDiscardAfterExpedition settings for settings versions < 1.0.4
+    if not CheckBeforeDelete.AddonVersion and CheckBeforeDelete.AddonVersion < 104 then
+        CheckBeforeDelete.AddonVersion                  = 104
+        CheckBeforeDelete.AutoDiscardAfterExpedition    = true
         FileSave(self.SettingsPath, CheckBeforeDelete)
     end
     
@@ -67,6 +76,7 @@ self.Helpers        = {}
 self.Misc           = {}
 self.SaveLastCheck  = Now()
 self.ManualStart    = false
+self.OnFishExpedit  = false
 self.Wait           = false
 self.Timer          = 0
 self.FinishItem     = false
@@ -318,15 +328,9 @@ function TooManyFish.GetListToDelete()
                 end
             end
         end
-    
-        if table.size(self.ItemList) > 0 then
-            self.StartDelete = true
-        end
-    else
-        if table.size(self.ItemList) > 0 then
-            self.StartDelete = true
-        end
     end
+    
+    self.StartDelete = true
 end
 
 -- ------------------------- ExecuteOrder66 ------------------------
@@ -363,6 +367,28 @@ function TooManyFish.Update()
             self.ManualStart = true
         end
 
+-- ------------------------- AutoDiscardAfterExpedition ------------------------
+
+        if self.Settings.AutoDiscardAfterExpedition then 
+            if Player.localmapid == 900 and not self.OnFishExpedit then
+                self.OnFishExpedit = true
+            end
+
+            if self.OnFishExpedit and Player.localmapid ~= 900 then
+                TooManyFish.Log([[Auto start after ocean fishing]])
+
+                self.OnFishExpedit = false
+
+                if FFXIV_Common_BotRunning then
+                    ml_global_information.ToggleRun()
+                end
+
+                self.ManualStart = true
+            end
+        end
+
+-- ------------------------- ManualStart ------------------------
+
         if self.ManualStart then
             self.ItemList = { }
             TooManyFish.GetListToDelete()
@@ -385,8 +411,6 @@ function TooManyFish.Update()
                 if not FFXIV_Common_BotRunning and gBotMode == "Fishing Guide" and TooManyFish.GetFreeInvSlots() > 10 then
                     ml_global_information.ToggleRun()
                 end
-
-                return false
             else
 
 -- ------------------------- if there's something to delete ------------------------
@@ -430,6 +454,10 @@ function TooManyFish.MainWindow(event, tickcount)
 -- ------------------------- Enable Addon ------------------------
 
                 self.Settings.EnableTooManyFish = GUI:Checkbox("Enable TooManyFish##EnableAddonBehavior", self.Settings.EnableTooManyFish)
+
+                if self.Settings.EnableTooManyFish then
+                    self.Settings.AutoDiscardAfterExpedition = GUI:Checkbox("Auto start after ocean fishing##AutoDiscardAfterExpedition", self.Settings.AutoDiscardAfterExpedition)
+                end
 
                 GUI:NewLine()
 
