@@ -13,9 +13,9 @@ self.Info = {
     Author      = "Mash#3428",
     AddonName   = "TooManyFish",
     ClassName   = "TooManyFish",
-	Version     = 104,
+	Version     = 105,
 	StartDate   = "18-05-2021",
-	LastUpdate  = "21-05-2021",
+	LastUpdate  = "11-12-2021",
     Description = "Deletes seafood when inventory is full.",
 	ChangeLog = {
         [1] = "0.0.1 - Starting development.",
@@ -24,6 +24,7 @@ self.Info = {
         [102] = "1.0.2 - Adding the option to blacklist aquarium fish.",
         [103] = "1.0.3 - Discarding untradable items is now supported.",
         [104] = "1.0.4 - Auto discard fishes after ocean fishing expeditions.",
+        [105] = "1.0.5 - Fishes on the spot.",
 	}
 }
 
@@ -75,6 +76,9 @@ self.Style          = { MainWindow = {} }
 self.Helpers        = {}
 self.Misc           = {}
 self.SaveLastCheck  = Now()
+
+-- ------------------------- States ------------------------
+
 self.ManualStart    = false
 self.OnFishExpedit  = false
 self.Wait           = false
@@ -82,6 +86,14 @@ self.Timer          = 0
 self.FinishItem     = false
 self.StartDelete    = false
 self.ItemList       = {}
+self.RunningFishOnSpot = false
+self.PreparingFishCast = {
+    Cordial = false,
+    Prize = false,
+    Thaliak = false,
+    Cast = false
+}
+self.FishCastTimer = Now()
 
 -- ------------------------- GUI ------------------------
 
@@ -100,8 +112,8 @@ self.GUI = {
 self.Style.MainWindow = {
     Title       = self.Info.AddonName,
     Position    = { X = 40, Y = 175 },
-    Size        = { Width = 300, Height = 225 },
-    Components  = { MainTabs = GUI_CreateTabs([[Home,Blacklist,About]]) }
+    Size        = { Width = 300, Height = 250 },
+    Components  = { MainTabs = GUI_CreateTabs([[Home,Fish,Blacklist,About]]) }
 }
 
 -- ------------------------- Aquarium Fish ------------------------
@@ -358,10 +370,20 @@ end
 
 function TooManyFish.Update()
     TooManyFish.Save(false)
+
+-- ------------------------- StartFishingAtSpot ------------------------
+
+    if self.RunningFishOnSpot then
+        if MashLib and MashLib.System.GetJob(Player.Job) == [[Fisher]] then
+            self.StartFishingAtSpot()
+        else
+            self.RunningFishOnSpot = false
+        end
+    end
     
-    if self.Settings.EnableTooManyFish then
-        
 -- ------------------------- When to Start ------------------------
+
+    if self.Settings.EnableTooManyFish then
 
         if TooManyFish.GetFreeInvSlots() < 5 and not FFXIV_Common_BotRunning and gBotMode == "Fishing Guide" then
             self.ManualStart = true
@@ -439,6 +461,70 @@ function TooManyFish.Update()
     end
 end
 
+-- Fish Here
+
+function self.StartFishingAtSpot()
+    if Player:GetFishingState() == 6 then
+        self.FishCastTimer = Now()
+    end
+
+    if Player:GetFishingState() ~= 9 and Player:GetFishingState() ~= 5 then
+        if Player:GetFishingState() == 4 or Player:GetFishingState() == 0 then
+            if not self.PreparingFishCast.Cordial and Player.GP.current < 200 and MashLib.Helpers.TimeSince(self.FishCastTimer) > 1000 then
+                local GetCordials = MashLib.Helpers.First(MashLib.Character.Inventory.GetById(12669))
+
+                if GetCordials then
+                    GetCordials:oCast()
+                    d("== [MashFish] - Using Hi-Cordial.")
+                end
+
+                self.PreparingFishCast.Cordial = true
+                self.FishCastTimer = Now()
+            elseif not self.PreparingFishCast.Thaliak and MashLib.Helpers.TimeSince(self.FishCastTimer) > 1000 then
+                if MashLib.System.SearchActionById(1, 26804):IsReady() then
+                    MashLib.System.SearchActionById(1, 26804):Cast()
+                end
+                d("== [MashFish] - Casting Thaliak's Favor.")
+
+                self.PreparingFishCast.Thaliak = true
+                self.FishCastTimer = Now()
+            elseif not self.PreparingFishCast.Prize and MashLib.Helpers.TimeSince(self.FishCastTimer) > 1000 then
+                if MashLib.System.SearchActionById(1, 26806):IsReady() then
+                    MashLib.System.SearchActionById(1, 26806):Cast()
+                end
+                d("== [MashFish] - Casting Prize Catch.")
+
+                self.PreparingFishCast.Prize = true
+                self.FishCastTimer = Now()
+            end
+
+            if self.PreparingFishCast.Prize and self.PreparingFishCast.Thaliak and MashLib.Helpers.TimeSince(self.FishCastTimer) > 1000 then
+                if MashLib.System.SearchActionById(1, 289):IsReady() then
+                    MashLib.System.SearchActionById(1, 289):Cast()
+                end
+                d("== [MashFish] - Casting Cast.")
+
+                self.PreparingFishCast.Cast = true
+                self.FishCastTimer = Now()
+            end
+        end
+    else
+        if Player:GetFishingState() == 5 then
+            if MashLib.System.SearchActionById(1, 296):IsReady() then
+                MashLib.System.SearchActionById(1, 296):Cast()
+            end
+            d("== [MashFish] - Casting Hook.")
+        end
+
+        self.PreparingFishCast = {
+            Cordial = false,
+            Prize = false,
+            Thaliak = false,
+            Cast = false
+        }
+    end
+end
+
 -- ------------------------- Main Window ------------------------
 
 function TooManyFish.MainWindow(event, tickcount)
@@ -492,10 +578,44 @@ function TooManyFish.MainWindow(event, tickcount)
                     -- GUI:Text([[ItemList: ]]     .. tostring(table.size(self.ItemList)))
                 end
             end
+
+            if TabIndex == 2 then
+                GUI:TextWrapped([[Simple script to fish at the spot you're in, it doesn't change jobs nor takes your character somewhere, just fish.]])
+                GUI:TextWrapped([[It does use certain actions though, so you can level up faster, like cordials, Thaliak's Favor and Prize Catch.]])
+                GUI:TextWrapped([[If you go to Old Sharlayan ( 13 , 13 ) or nearby, you can get your Fisher from 80 to 90 in 2 hours or so.]])
+                GUI:NewLine()
+
+                local FishOnSpotHoldEnabled = self.RunningFishOnSpot and [[Stop fishing]] or [[Start fishing]]
+                local FishOnSpotToggle = GUI:Button(FishOnSpotHoldEnabled .. "##FishOnSpotBtn", 283, 30)
+
+                if GUI:IsItemClicked(FishOnSpotToggle) then
+                    if self.RunningFishOnSpot then
+                        self.PreparingFishCast = {
+                            Cordial = false,
+                            Prize = false,
+                            Thaliak = false,
+                            Cast = false
+                        }
+                    else
+                        self.FishCastTimer = Now()
+                    end
+
+                    self.RunningFishOnSpot = not self.RunningFishOnSpot
+                end
+
+                if GUI:IsItemHovered(FishOnSpotToggle) then
+                    GUI:BeginTooltip()
+                        GUI:Text([[Change your job to Fisher and go near a body of water.]])
+                        GUI:Text([[This routine requires MashLib to work, free in the store.]])
+                    GUI:EndTooltip()
+                end
+
+                GUI:NewLine()
+            end
             
 -- ------------------------- Blacklist ------------------------
 
-            if TabIndex == 2 then
+            if TabIndex == 3 then
                 GUI:Text(GetString([[Fish Blacklist]]))
                 GUI:Separator()
                 GUI:NewLine()
@@ -515,7 +635,7 @@ function TooManyFish.MainWindow(event, tickcount)
             
 -- ------------------------- About ------------------------
 
-            if TabIndex == 3 then
+            if TabIndex == 4 then
                 GUI:Text(GetString([[About TooManyFish]]))
                 GUI:Separator()
                 GUI:NewLine()
