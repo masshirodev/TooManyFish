@@ -474,8 +474,10 @@ function self.StartFishingAtSpot()
                 local GetCordials = MashLib.Helpers.First(MashLib.Character.Inventory.GetById(12669))
 
                 if GetCordials then
-                    GetCordials:oCast()
-                    d("== [MashFish] - Using Hi-Cordial.")
+                    if GetCordials:Cast() then
+                        GetCordials:Cast()
+                        d("== [MashFish] - Using Hi-Cordial.")
+                    end
                 end
 
                 self.PreparingFishCast.Cordial = true
