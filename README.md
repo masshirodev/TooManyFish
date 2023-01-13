@@ -1,4 +1,9 @@
 # TooManyFish
+
+#### Fishes on the spot.
+
+I mainly used this to get to lvl 90 after the 6.0 patch until the main fishing addons were working again.
+
 #### Minion addon to run alongside Fishing Guide.
 
 I noticed that when I left the bot overnight fishing, it would soon fill your inventory and stop. This is my answer to that, if enabled, this addon will check to see if the last routine that ran was indeed Fishing Guide, then it'll proceed to discard every non-blacklisted seafood from your inventory, and restart Fishing Guide, so you can keep fishing.
